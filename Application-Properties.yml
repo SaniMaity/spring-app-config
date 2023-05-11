@@ -1,0 +1,82 @@
+server:
+  port: 9090
+spring:
+  zipkin:
+  base-url: http://localhost:9411
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:3306/users
+    username: root
+    password: root
+    driverClassName: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+  application:
+    name: AUTHENTICATION-SERVICE
+  cloud:
+    config:
+      server:
+        git:
+          uri: https://github.com/SaniMaity/practiceMicroservice-config-server
+          clone-on-start: true
+#If it's a config client
+#    config:
+#      import: configserver:http://${CONFIG_SERVER_URL:localhost}:9296
+    gateway:
+      routes:
+        - id: ORDER-SERVICE
+          uri: lb://ORDER-SERVICE
+          predicates:
+            - Path=/order/**
+#IF you want to configure Circuitebreker with bean defination like
+#  @Bean
+#  public Customizer<Resilience4JCircuitBreakerFactory> defaultCustomizer(){ return factory ->
+#  factory.configureDefault( id -> new Resilience4JConfigBuilder(id).circuitBreakerConfig(ofDefaults()).build());}
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: ORDER-SERVICE
+                fallbackuri: forward:/orderServiceFallback
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 1
+                redis-rate-limiter.burstCapacity: 1
+
+#If you want to configure cuircuitBreker here only
+#  @FeignClient(name = "PRODUCT-SERVICE/products")
+#  @CircuitBreaker(name = "external", fallbackMethod = "fallBackForProductService")
+# fallBackForProductService should be the default method inside the ProductService Interface
+resilience4j:
+  circuitbreaker:
+    instances:
+      external:
+        event-consumer-buffer-size: 10
+        failure-rate-threshold: 50
+        minimum-number-of-calls: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+        wait-duration-in-open-state: 5s
+        permitted-number-of-calls-in-half-open-state: 3
+        sliding-window-size: 10
+        sliding-window-type: COUNT_BASED
+#If It's Eureka Client
+eureka:
+  instance:
+    prefer-ip-address: true
+  client:
+    fetch-registry: true
+    register-with-eureka: true
+    service-url:
+      defaultZone: ${EUREKA_SERVER_ADDRESS:http://localhost:8761/eureka}
+#If It's Eureka Server
+#eureka:
+#  instance:
+#    hostname: localhost
+#  client:
+#    register-with-eureka: false
+#    fetch-registry: false
+
+#For distributed log tracing with Zipkin
+management:
+  tracing:
+    sampling:
+      probability: 1.0
